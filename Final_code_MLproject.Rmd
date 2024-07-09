@@ -1,0 +1,298 @@
+---
+title: "Machine Learning Project"
+author: "Carlo Lopez, Vibha Naiknavare, Daniel Huang, George Cole "
+date: "2023-09-27"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+```{r}
+library(ggplot2)
+library(tidyverse)
+```
+
+Reading the Data
+```{r}
+# Reading data & taking out unwanted variables
+spotify <- read.csv("spotify-2023.csv")
+final_spotify_data <- spotify[,-c(3,10,11,12,13,14)]
+
+# Cleaning data for summary (removing name, artist, and NA's)
+spotify_summary_data <- final_spotify_data[,-c(1,2)]
+spotify_summary_data$streams <- as.numeric(spotify$streams)
+spotify_summary_data$key <- as.factor(spotify$key)
+spotify_summary_data$mode <- as.factor(spotify$mode)
+
+which(is.na(spotify_summary_data))
+
+spotify_summary_data <- na.omit(spotify_summary_data)
+
+# Summary Data 
+summary(spotify_summary_data)
+
+# Final test data
+spotify_data <- spotify_summary_data[,-c(1,2,3,4,5)]
+```
+
+Variables: 
+track_name: Name of the song
+artist(s)_name: Name of the artist(s) of the song
+artist_count: Number of artists contributing to the song
+released_year: Year when the song was released
+released_month: Month when the song was released
+released_day: Day of the month when the song was released
+in_spotify_playlists: Number of Spotify playlists the song is included in
+in_spotify_charts: Presence and rank of the song on Spotify charts
+streams: Total number of streams on Spotify
+bpm: Beats per minute, a measure of song tempo
+key: Key of the song
+mode: Mode of the song (major or minor)
+danceability_%: Percentage indicating how suitable the song is for dancing
+valence_%: Positivity of the song's musical content
+energy_%: Perceived energy level of the song
+acousticness_%: Amount of acoustic sound in the song
+instrumentalness_%: Amount of instrumental content in the song
+liveness_%: Presence of live performance elements
+speechiness_%: Amount of spoken words in the song
+
+1 general linear regression analysis
+
+3 individual analysis:
+streams vs speechiness - line plot
+streams vs danceability - line plot
+streams vs keys - box-plot
+
+correlation table
+2 interaction terms analysis:
+maybe keys + danceability or modes + speechniess
+
+--> identify if the data is hugely impacted by extreme values
+
+General Visualization of the data we have:
+```{r}
+options(scipen = 9)
+Streams_density_vis <- ggplot(spotify_data, aes(x = streams)) + # Set X-axis as the number of streams
+  geom_density(fill = "blue", alpha = 0.3) + # Use geom_density to get density plot
+  theme_bw() + # Set theme for plot
+  theme(panel.grid.major = element_blank(), # Turn of the background grid
+        panel.grid.minor = element_blank(),
+        panel.border = element_blank(),
+        panel.background = element_blank()) +
+  labs(x = "Streams", # Set plot labels
+       title = "Density plot of Streams")
+
+Streams_density_vis # Generate plot
+```
+This is a pretty right skewed distribution. Most of the songs have their number of streams less than 1 billion, while some songs are extremely popular with more than 2 billion streams. We should apply a log-transform
+```{r}
+log_streams <- log(spotify_data$streams + 1)
+
+summary(log_streams)
+
+spotify_data$streams <- log_streams
+
+spotify_data <- na.omit(spotify_data)
+
+spotify_data <- spotify_data %>%
+  rename("log_streams" = streams)
+
+```
+
+
+Regression Analysis: Which factors influence streams
+```{r}
+fit_1 <- lm(log_streams ~.,  # Set formula
+            data = spotify_data) # Set dataset
+
+summary(fit_1)
+```
+4 significant factors: danceability, acustincness, liveness, adn speechiness
+
+Creating Visualizations based on significant variables
+
+```{r}
+spotify_vis <- ggplot(spotify_summary_data, 
+              aes(y = streams, 
+                  x = danceability_.)) + 
+  geom_point(color = "blue", alpha = 0.3) + 
+  geom_smooth(method = "lm") + 
+  theme_bw() + 
+  theme(panel.grid.major = element_blank(), 
+        panel.grid.minor = element_blank(),
+        panel.border = element_blank(),
+        panel.background = element_blank()) +
+  labs(y = "Streams",
+       x = "Danceability (%)",
+       title = "Danceability on Streams")
+
+spotify_vis
+```
+
+
+
+```{r}
+spotify_vis2 <- ggplot(spotify_summary_data, 
+              aes(y = streams, 
+                  x = speechiness_. )) + 
+  geom_point(color = "red", alpha = 0.4) + 
+  theme_bw() + 
+  theme(panel.grid.major = element_blank(), 
+        panel.grid.minor = element_blank(),
+        panel.border = element_blank(),
+        panel.background = element_blank()) +
+  labs(y = "Streams",
+       x = "Speechines",
+       title = "Speechiness on Streams")
+
+spotify_vis2
+```
+
+Packages:
+```{r}
+library(rpart)                      # Popular decision tree algorithm
+library(rattle)                 # Fancy tree plot
+library(rpart.plot)             # Enhanced tree plots
+library(RColorBrewer)               # Color selection for fancy tree plot
+library(party)                  # Alternative decision tree algorithm
+library(partykit)               # Convert rpart object to BinaryTree
+library(caret)  
+library(reshape2) # Load reshape 2 for melting
+library(DMwR) # Load data mining with R for SMOTE
+library(splitstackshape) # Used for stratified sampling
+
+```
+
+
+Correlation and HeatMap
+```{r}
+numeric_columns <- spotify_data[, sapply(spotify_data, is.numeric)]
+
+correlation_matrix <- cor(numeric_columns)
+correlation_matrix
+
+melted_corr_matrix <- melt(correlation_matrix)
+
+ggplot(data = melted_corr_matrix, aes(x = Var1, y = Var2, fill = value)) +
+  geom_tile() +
+  scale_fill_gradient2(low = "blue", mid = "white", high = "red", midpoint = 0, limits = c(-1, 1)) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(title = "Correlation Heatmap")
+```
+
+
+
+
+Improved regression model Interaction terms 
+
+```{r}
+
+
+interaction_reg1 <- lm(log_streams ~ valence_.* danceability_.+.,  # Set formula
+            data = spotify_data)
+
+interaction_reg
+summary(interaction_reg1)
+
+interaction_terms <- ggplot(spotify_data, aes(y = interaction(valence_., danceability_.), color = valence_., x = danceability_.)) +
+  geom_point(alpha = 0.3) +
+  geom_smooth(aes(group = valence_.), method = "lm") +
+  theme_bw() +
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.border = element_blank(),
+        panel.background = element_blank()) +
+  labs(y = "Interaction (valence_. & Danceability)",
+       x = "Danceability",
+       title = "Valence Relationship with Danceability")
+
+print(interaction_terms)
+
+
+colnames(spotify_data)
+```
+
+
+
+
+Decision Tree:
+```{r}
+options(scipen = 0)
+
+tree_1 <- rpart(log_streams ~., # Set tree formula
+data = spotify_data) # Set dataset
+par(xpd = NA) # Set this avoid cut-off text
+plot(tree_1)  # Plot tree
+text(tree_1, digits = 3) # Add text
+
+rpart.plot(tree_1, digits = 7, extra = 1)
+
+```
+
+
+Random Forest:
+```{r}
+library(randomForest)
+library(rpart) # Load rpart for decision trees
+library(caret) # Used for analysing results
+library(splitstackshape) # Used for stratified sampling
+
+
+
+set.seed(12)
+length(spotify_data$log_streams)
+# Sample all unique elements for train.rows2
+train.rows2 <- sample(spotify_data$log_streams, 700, replace = FALSE)
+
+# Identify the remaining elements for valid.rows2
+remaining_elements <- setdiff(spotify_data$log_streams, train.rows2)
+
+# Sample all remaining unique elements for valid.rows2
+valid.rows2 <- sample(remaining_elements, length(remaining_elements), replace = FALSE)
+
+train.df2 <- spotify_data[train.rows2,]
+
+valid.df2 <- spotify_data[valid.rows2,]
+
+tree_model <- rpart(log_streams ~., # Set tree formula
+                data = train.df2) # Set dataset
+tree_preds <- predict(tree_model, valid.df2)
+
+# Calculate RMSE
+rmse <- sqrt(mean((tree_preds - valid.df2$log_streams)^2))
+
+# Print RMSE
+print(paste("Root Mean Squared Error (RMSE):", round(rmse, 2)))
+
+set.seed(258506) # Set random number generator seed for reproducability
+# Use random forest to do bagging
+bag_mod <- randomForest(log_streams ~., # Set tree formula
+                data = train.df2, # Set dataset
+                mtry = 10, # Set mtry to number of variables 
+                ntree = 200) # Set number of trees to use
+bag_mod # View model
+```
+
+XGBoost:
+```{r}
+library(xgboost)
+set.seed(111111)
+
+dtrain <- xgb.DMatrix(data = as.matrix(as.numeric(train.df2[,-which(names(train.df2) == "log_streams")])), label = train.df2$log_streams)
+
+bst_1 <- xgboost(data = dtrain, # Set training data
+               nrounds = 100, # Set number of rounds
+               verbose = 1, # 1 - Prints out fit
+               print_every_n = 20# Prints out result every 20th iteration
+ ) 
+
+Library(Metrics)
+
+rmse(actual, predicted)
+```
+
